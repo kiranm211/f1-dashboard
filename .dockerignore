@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.gitignore
+.vscode
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.env
+coverage
