@@ -2,13 +2,18 @@
   "name": "f1-dashboard",
   "private": true,
   "workspaces": [
-    "apps/api"
+    "apps/api",
+    "apps/web"
   ],
   "scripts": {
     "api:install": "npm install --workspace @f1-dashboard/api",
     "api:dev": "npm --workspace @f1-dashboard/api run dev",
     "api:build": "npm --workspace @f1-dashboard/api run build",
     "api:start": "npm --workspace @f1-dashboard/api run start",
+    "web:install": "npm install --workspace @f1-dashboard/web",
+    "web:dev": "npm --workspace @f1-dashboard/web run dev",
+    "web:build": "npm --workspace @f1-dashboard/web run build",
+    "web:preview": "npm --workspace @f1-dashboard/web run preview",
     "db:migrate": ".venv\\Scripts\\python.exe db\\migrate.py",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",

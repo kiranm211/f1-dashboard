@@ -7,12 +7,14 @@ This repository starts the DB-first platform for an F1 dashboard.
 - PostgreSQL schema for normalized OpenF1 data, raw ingestion batches, and sync orchestration.
 - Fastify read API using Drizzle ORM for health, sessions, and leaderboard reads from the local database.
 - Fastify read API now includes Redis-backed read-through caching for sessions and leaderboard endpoints.
+- Next.js frontend dashboard that consumes local API endpoints for sessions and leaderboard views.
 - Python worker using SQLAlchemy ORM for ingestion, orchestration, and sync job state.
 - Docker Compose for local PostgreSQL and Redis.
 
 ## Current structure
 
 - `apps/api`: Fastify TypeScript read API.
+- `apps/web`: Next.js frontend dashboard.
 - `apps/worker`: Python scheduler and OpenF1 sync worker.
 - `db/migrations`: PostgreSQL schema migrations.
 - `docs`: project documentation.
@@ -32,6 +34,8 @@ This repository starts the DB-first platform for an F1 dashboard.
    `npm run api:dev`
 7. Start the worker in another terminal:
    `npm run worker:run`
+8. Start the frontend in another terminal:
+   `npm run web:dev`
 
 For a first-time local bootstrap, you can also run:
 
@@ -42,6 +46,8 @@ For a first-time local bootstrap, you can also run:
 - `GET /health`
 - `GET /v1/sessions?year=2026&state=live`
 - `GET /v1/leaderboard?sessionKey=1234`
+
+Frontend local URL: `http://127.0.0.1:5173`
 
 `/v1/sessions` and `/v1/leaderboard` responses include a `meta` object with cache and freshness details.
 
@@ -67,7 +73,7 @@ If you see repeated `429 Too Many Requests` in worker logs, lower `WORKER_DUE_JO
 
 ## Next implementation targets
 
-- Add migration runner and seed scripts.
-- Add Redis-backed API caching.
-- Add frontend app that consumes only the local API.
-- Add retries with explicit 429 backoff and dead-letter replay commands.
+- Expand OpenF1 endpoint coverage for additional telemetry and strategy views.
+- Add historical backfill commands for full season/year hydration.
+- Add observability dashboards (worker lag, sync success rate, cache hit ratio).
+- Reduce frontend bundle size with route-level code splitting.

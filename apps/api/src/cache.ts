@@ -2,8 +2,22 @@ import { Redis } from "ioredis";
 
 import { config } from "./config.js";
 
-const redis = config.CACHE_ENABLED ? new Redis(config.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 }) : null;
+const redis = config.CACHE_ENABLED
+  ? new Redis(config.REDIS_URL, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+      // Do not spin forever when Redis is down.
+      retryStrategy: () => null
+    })
+  : null;
 let cacheReady = false;
+
+if (redis) {
+  // Prevent ioredis "Unhandled error event" noise when Redis is unreachable.
+  redis.on("error", () => {
+    cacheReady = false;
+  });
+}
 
 async function ensureReady(): Promise<boolean> {
   if (!redis) {
