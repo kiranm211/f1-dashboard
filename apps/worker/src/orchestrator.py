@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Iterable
@@ -27,29 +28,54 @@ CADENCE_BY_STATE: dict[str, dict[str, int]] = {
         "drivers": 1800,
         "weather": 300,
         "race_control": 120,
-        "laps": 300
+        "laps": 300,
+        "car_data": 30,
+        "location": 30,
+        "team_radio": 120
     },
     "live": {
         "drivers": 1800,
         "weather": 60,
         "race_control": 5,
         "laps": 30,
+        "car_data": 5,
+        "location": 5,
+        "team_radio": 30,
         "position": 5,
         "intervals": 5,
         "pit": 15,
-        "stints": 30
+        "stints": 30,
+        "overtakes": 5,
+        "starting_grid": 300,
+        "championship_drivers": 60,
+        "championship_teams": 60
     },
     "cooldown": {
         "race_control": 120,
         "session_result": 120,
         "laps": 300,
         "pit": 300,
-        "stints": 300
+        "stints": 300,
+        "team_radio": 300,
+        "overtakes": 120,
+        "starting_grid": 900,
+        "championship_drivers": 300,
+        "championship_teams": 300
     },
     "closed": {}
 }
 
-RACE_ONLY_ENDPOINTS = {"position", "intervals", "pit", "stints", "session_result"}
+RACE_ONLY_ENDPOINTS = {
+    "position",
+    "intervals",
+    "pit",
+    "stints",
+    "session_result",
+    "overtakes",
+    "starting_grid",
+    "championship_drivers",
+    "championship_teams",
+}
 
 
 class BatchOrchestrator:
@@ -72,14 +98,16 @@ class BatchOrchestrator:
         due_jobs = await self.database.fetch_due_jobs(limit=requested_limit)
         selected_jobs = self._select_due_jobs(due_jobs, live_active)
 
-        for job in selected_jobs:
-            await self._run_single_job(
+        await asyncio.gather(*[
+            self._run_single_job(
                 job_id=job.job_id,
                 job_name=job.job_name,
                 endpoint=job.endpoint,
                 session_key=job.session_key,
                 cadence_seconds=job.cadence_seconds
             )
+            for job in selected_jobs
+        ])
 
     async def reconcile_jobs(self) -> None:
         await self._ensure_bootstrap_jobs_for_unsynced_sessions()
@@ -154,7 +182,8 @@ class BatchOrchestrator:
         try:
             result = await self._dispatch(endpoint, session_key)
             await self.database.mark_job_success(job_id, run_id, result.rows_written, result.batch_id, cadence_seconds)
-            if job_name.startswith("bootstrap:") and session_key is not None:
+            is_bootstrap_or_manual = job_name.startswith("bootstrap:") or job_name.startswith("manual:")
+            if is_bootstrap_or_manual and session_key is not None:
                 await self.database.mark_bootstrap_endpoint_synced(session_key, endpoint)
                 session_type = await self.database.get_session_type(session_key)
                 if session_type is not None:
@@ -184,10 +213,24 @@ class BatchOrchestrator:
             return await self.sync_service.sync_positions(session_key)
         if endpoint == "intervals":
             return await self.sync_service.sync_intervals(session_key)
+        if endpoint == "car_data":
+            return await self.sync_service.sync_car_data(session_key)
+        if endpoint == "location":
+            return await self.sync_service.sync_location(session_key)
+        if endpoint == "team_radio":
+            return await self.sync_service.sync_team_radio(session_key)
         if endpoint == "pit":
             return await self.sync_service.sync_pit(session_key)
         if endpoint == "stints":
             return await self.sync_service.sync_stints(session_key)
+        if endpoint == "overtakes":
+            return await self.sync_service.sync_overtakes(session_key)
+        if endpoint == "starting_grid":
+            return await self.sync_service.sync_starting_grid(session_key)
+        if endpoint == "championship_drivers":
+            return await self.sync_service.sync_championship_drivers(session_key)
+        if endpoint == "championship_teams":
+            return await self.sync_service.sync_championship_teams(session_key)
         if endpoint == "session_result":
             return await self.sync_service.sync_session_results(session_key)
         raise ValueError(f"Unsupported endpoint: {endpoint}")
@@ -238,13 +281,18 @@ class BatchOrchestrator:
 
     @staticmethod
     def _bootstrap_endpoints(session_type: str) -> list[str]:
-        base = ["drivers", "weather", "race_control", "laps", "pit", "stints", "session_result"]
+        base = ["drivers", "weather", "race_control", "laps", "pit", "stints", "session_result", "car_data", "location", "team_radio", "starting_grid"]
         if session_type.lower() == "race":
-            base.extend(["position", "intervals"])
+            base.extend(["position", "intervals", "overtakes", "championship_drivers", "championship_teams"])
         return base
 
     @staticmethod
     def _select_due_jobs(due_jobs: Iterable, live_active: bool) -> list:
+        manual_jobs = [job for job in due_jobs if str(job.job_name).startswith("manual:")]
+        if manual_jobs:
+            batch_size = settings.worker_due_jobs_batch_size_live if live_active else settings.worker_due_jobs_batch_size
+            return manual_jobs[:batch_size]
+
         if live_active:
             live_jobs = [job for job in due_jobs if str(job.job_name).startswith("live:")]
             return live_jobs[: settings.worker_due_jobs_batch_size_live]

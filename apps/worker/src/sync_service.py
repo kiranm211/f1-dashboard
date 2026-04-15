@@ -37,6 +37,7 @@ class SyncService:
                 for row in meetings
             ]
         )
+        await self.database.link_circuit_facts()
         await self._mark_batch_complete(meetings_batch_id, len(meetings))
 
         sessions, sessions_url = await self.client.fetch("sessions", {"year": year})
@@ -149,6 +150,90 @@ class SyncService:
         )
         await self._finish_time_series_batch("intervals", session_key, batch_id, rows)
         return SyncResult(endpoint="intervals", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_car_data(self, session_key: int) -> SyncResult:
+        params = await self._watermark_params("car_data", session_key)
+        rows, request_url = await self.client.fetch("car_data", {"session_key": session_key, **params})
+        batch_id = await self._store_raw_batch("car_data", session_key, request_url, rows)
+        await self.database.upsert_car_data_samples(
+            [
+                {
+                    "session_key": session_key,
+                    "driver_number": row["driver_number"],
+                    "date": self._parse_datetime(row["date"]),
+                    "brake": row.get("brake"),
+                    "drs": row.get("drs"),
+                    "n_gear": row.get("n_gear"),
+                    "rpm": row.get("rpm"),
+                    "speed": row.get("speed"),
+                    "throttle": row.get("throttle"),
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._finish_time_series_batch("car_data", session_key, batch_id, rows)
+        return SyncResult(endpoint="car_data", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_location(self, session_key: int) -> SyncResult:
+        params = await self._watermark_params("location", session_key)
+        rows, request_url = await self.client.fetch("location", {"session_key": session_key, **params})
+        batch_id = await self._store_raw_batch("location", session_key, request_url, rows)
+        await self.database.upsert_location_samples(
+            [
+                {
+                    "session_key": session_key,
+                    "driver_number": row["driver_number"],
+                    "date": self._parse_datetime(row["date"]),
+                    "x": row.get("x"),
+                    "y": row.get("y"),
+                    "z": row.get("z"),
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._finish_time_series_batch("location", session_key, batch_id, rows)
+        return SyncResult(endpoint="location", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_team_radio(self, session_key: int) -> SyncResult:
+        params = await self._watermark_params("team_radio", session_key)
+        rows, request_url = await self.client.fetch("team_radio", {"session_key": session_key, **params})
+        batch_id = await self._store_raw_batch("team_radio", session_key, request_url, rows)
+        await self.database.upsert_team_radio_messages(
+            [
+                {
+                    "session_key": session_key,
+                    "driver_number": row["driver_number"],
+                    "date": self._parse_datetime(row["date"]),
+                    "recording_url": row["recording_url"],
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._finish_time_series_batch("team_radio", session_key, batch_id, rows)
+        return SyncResult(endpoint="team_radio", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_overtakes(self, session_key: int) -> SyncResult:
+        params = await self._watermark_params("overtakes", session_key)
+        rows, request_url = await self.client.fetch("overtakes", {"session_key": session_key, **params})
+        batch_id = await self._store_raw_batch("overtakes", session_key, request_url, rows)
+        await self.database.upsert_overtakes(
+            [
+                {
+                    "session_key": session_key,
+                    "date": self._parse_datetime(row["date"]),
+                    "overtaking_driver_number": row["overtaking_driver_number"],
+                    "overtaken_driver_number": row["overtaken_driver_number"],
+                    "position": row["position"],
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._finish_time_series_batch("overtakes", session_key, batch_id, rows)
+        return SyncResult(endpoint="overtakes", rows_written=len(rows), batch_id=batch_id)
 
     async def sync_race_control(self, session_key: int) -> SyncResult:
         params = await self._watermark_params("race_control", session_key)
@@ -263,6 +348,64 @@ class SyncService:
         )
         await self._mark_batch_complete(batch_id, len(rows))
         return SyncResult(endpoint="session_result", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_starting_grid(self, session_key: int) -> SyncResult:
+        rows, request_url = await self.client.fetch("starting_grid", {"session_key": session_key})
+        batch_id = await self._store_raw_batch("starting_grid", session_key, request_url, rows)
+        await self.database.upsert_starting_grid(
+            [
+                {
+                    "session_key": session_key,
+                    "driver_number": row["driver_number"],
+                    "position": row.get("position"),
+                    "lap_duration": row.get("lap_duration"),
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._mark_batch_complete(batch_id, len(rows))
+        return SyncResult(endpoint="starting_grid", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_championship_drivers(self, session_key: int) -> SyncResult:
+        rows, request_url = await self.client.fetch("championship_drivers", {"session_key": session_key})
+        batch_id = await self._store_raw_batch("championship_drivers", session_key, request_url, rows)
+        await self.database.upsert_championship_driver_standings(
+            [
+                {
+                    "session_key": session_key,
+                    "driver_number": row["driver_number"],
+                    "points_current": row.get("points_current"),
+                    "points_start": row.get("points_start"),
+                    "position_current": row.get("position_current"),
+                    "position_start": row.get("position_start"),
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._mark_batch_complete(batch_id, len(rows))
+        return SyncResult(endpoint="championship_drivers", rows_written=len(rows), batch_id=batch_id)
+
+    async def sync_championship_teams(self, session_key: int) -> SyncResult:
+        rows, request_url = await self.client.fetch("championship_teams", {"session_key": session_key})
+        batch_id = await self._store_raw_batch("championship_teams", session_key, request_url, rows)
+        await self.database.upsert_championship_team_standings(
+            [
+                {
+                    "session_key": session_key,
+                    "team_name": row["team_name"],
+                    "points_current": row.get("points_current"),
+                    "points_start": row.get("points_start"),
+                    "position_current": row.get("position_current"),
+                    "position_start": row.get("position_start"),
+                    "fetched_at": datetime.now(UTC),
+                }
+                for row in rows
+            ]
+        )
+        await self._mark_batch_complete(batch_id, len(rows))
+        return SyncResult(endpoint="championship_teams", rows_written=len(rows), batch_id=batch_id)
 
     async def _watermark_params(self, endpoint: str, session_key: int) -> dict[str, str]:
         watermark = await self.database.get_watermark(endpoint, session_key)

@@ -122,6 +122,95 @@ class IntervalSnapshot(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class CarDataSample(Base):
+    __tablename__ = "car_data_samples"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "driver_number", "date"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    brake: Mapped[int | None] = mapped_column(Integer)
+    drs: Mapped[int | None] = mapped_column(Integer)
+    n_gear: Mapped[int | None] = mapped_column(Integer)
+    rpm: Mapped[int | None] = mapped_column(Integer)
+    speed: Mapped[int | None] = mapped_column(Integer)
+    throttle: Mapped[int | None] = mapped_column(Integer)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class LocationSample(Base):
+    __tablename__ = "location_samples"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "driver_number", "date"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    x: Mapped[int | None] = mapped_column(Integer)
+    y: Mapped[int | None] = mapped_column(Integer)
+    z: Mapped[int | None] = mapped_column(Integer)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TeamRadioMessage(Base):
+    __tablename__ = "team_radio_messages"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "driver_number", "date", "recording_url"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recording_url: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Overtake(Base):
+    __tablename__ = "overtakes"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "date", "overtaking_driver_number", "overtaken_driver_number", "position"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    overtaking_driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    overtaken_driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class StartingGrid(Base):
+    __tablename__ = "starting_grid"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "driver_number"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int | None] = mapped_column(Integer)
+    lap_duration: Mapped[float | None] = mapped_column(Double)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChampionshipDriverStanding(Base):
+    __tablename__ = "championship_driver_standings"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "driver_number"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    driver_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    points_current: Mapped[float | None] = mapped_column(Double)
+    points_start: Mapped[float | None] = mapped_column(Double)
+    position_current: Mapped[int | None] = mapped_column(Integer)
+    position_start: Mapped[int | None] = mapped_column(Integer)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChampionshipTeamStanding(Base):
+    __tablename__ = "championship_team_standings"
+    __table_args__ = (PrimaryKeyConstraint("session_key", "team_name"),)
+
+    session_key: Mapped[int] = mapped_column(ForeignKey("sessions.session_key", ondelete="CASCADE"), nullable=False)
+    team_name: Mapped[str] = mapped_column(Text, nullable=False)
+    points_current: Mapped[float | None] = mapped_column(Double)
+    points_start: Mapped[float | None] = mapped_column(Double)
+    position_current: Mapped[int | None] = mapped_column(Integer)
+    position_start: Mapped[int | None] = mapped_column(Integer)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class RaceControlEvent(Base):
     __tablename__ = "race_control_events"
     __table_args__ = (PrimaryKeyConstraint("session_key", "date", "message"),)

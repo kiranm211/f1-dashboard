@@ -4,15 +4,20 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, AsyncIterator, Sequence
 
-from sqlalchemy import and_, func, not_, or_, select, update
+from sqlalchemy import and_, case, func, not_, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import settings
 from .models import (
+    CarDataSample,
+    ChampionshipDriverStanding,
+    ChampionshipTeamStanding,
     IntervalSnapshot,
     Lap,
+    LocationSample,
     Meeting,
+    Overtake,
     PitStop,
     PositionSnapshot,
     RaceControlEvent,
@@ -25,11 +30,13 @@ from .models import (
     SessionResult,
     SessionState,
     SessionSyncConfig,
+    StartingGrid,
     Stint,
     SyncJob,
     SyncJobRun,
     SyncJobStatus,
     SyncWatermark,
+    TeamRadioMessage,
     WeatherSnapshot,
 )
 
@@ -92,6 +99,36 @@ class Database:
                 "updated_at",
             ],
         )
+
+    async def link_circuit_facts(self) -> None:
+        assert self.session_factory is not None
+        async with self.session_factory() as session:
+            await session.execute(
+                text(
+                    """
+                    WITH meeting_aliases AS (
+                        SELECT DISTINCT ON (m.circuit_key)
+                            m.circuit_key,
+                            trim(regexp_replace(lower(translate(coalesce(m.circuit_short_name, ''), 'áàâäãåéèêëíìîïóòôöõúùûüçñýÿÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑÝŸ', 'aaaaaaeeeeiiiiooooouuuucnyyAAAAAAEEEEIIIIOOOOOUUUUCNYY')), '[^a-z0-9]+', ' ', 'g')) AS short_name_norm,
+                            trim(regexp_replace(lower(translate(coalesce(m.location, ''), 'áàâäãåéèêëíìîïóòôöõúùûüçñýÿÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑÝŸ', 'aaaaaaeeeeiiiiooooouuuucnyyAAAAAAEEEEIIIIOOOOOUUUUCNYY')), '[^a-z0-9]+', ' ', 'g')) AS location_norm,
+                            trim(regexp_replace(lower(translate(coalesce(m.country_name, ''), 'áàâäãåéèêëíìîïóòôöõúùûüçñýÿÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑÝŸ', 'aaaaaaeeeeiiiiooooouuuucnyyAAAAAAEEEEIIIIOOOOOUUUUCNYY')), '[^a-z0-9]+', ' ', 'g')) AS country_norm
+                        FROM meetings m
+                        WHERE m.circuit_key IS NOT NULL
+                        ORDER BY m.circuit_key, m.date_start DESC
+                    )
+                    UPDATE circuit_facts cf
+                    SET circuit_key = ma.circuit_key,
+                        updated_at = NOW()
+                    FROM meeting_aliases ma
+                    WHERE (
+                        trim(regexp_replace(lower(translate(coalesce(cf.circuit_short_name, ''), 'áàâäãåéèêëíìîïóòôöõúùûüçñýÿÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑÝŸ', 'aaaaaaeeeeiiiiooooouuuucnyyAAAAAAEEEEIIIIOOOOOUUUUCNYY')), '[^a-z0-9]+', ' ', 'g')) IN (ma.short_name_norm, ma.location_norm, ma.country_norm)
+                        OR trim(regexp_replace(lower(translate(coalesce(cf.canonical_name, ''), 'áàâäãåéèêëíìîïóòôöõúùûüçñýÿÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑÝŸ', 'aaaaaaeeeeiiiiooooouuuucnyyAAAAAAEEEEIIIIOOOOOUUUUCNYY')), '[^a-z0-9]+', ' ', 'g')) IN (ma.short_name_norm, ma.location_norm, ma.country_norm)
+                    )
+                    AND cf.circuit_key IS DISTINCT FROM ma.circuit_key
+                    """
+                )
+            )
+            await session.commit()
 
     async def upsert_sessions(self, rows: list[dict[str, Any]]) -> None:
         await self._bulk_upsert(
@@ -163,6 +200,62 @@ class Database:
             rows,
             [IntervalSnapshot.session_key, IntervalSnapshot.driver_number, IntervalSnapshot.date],
             ["interval", "gap_to_leader", "fetched_at"],
+        )
+
+    async def upsert_car_data_samples(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            CarDataSample,
+            rows,
+            [CarDataSample.session_key, CarDataSample.driver_number, CarDataSample.date],
+            ["brake", "drs", "n_gear", "rpm", "speed", "throttle", "fetched_at"],
+        )
+
+    async def upsert_location_samples(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            LocationSample,
+            rows,
+            [LocationSample.session_key, LocationSample.driver_number, LocationSample.date],
+            ["x", "y", "z", "fetched_at"],
+        )
+
+    async def upsert_team_radio_messages(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            TeamRadioMessage,
+            rows,
+            [TeamRadioMessage.session_key, TeamRadioMessage.driver_number, TeamRadioMessage.date, TeamRadioMessage.recording_url],
+            ["fetched_at"],
+        )
+
+    async def upsert_overtakes(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            Overtake,
+            rows,
+            [Overtake.session_key, Overtake.date, Overtake.overtaking_driver_number, Overtake.overtaken_driver_number, Overtake.position],
+            ["fetched_at"],
+        )
+
+    async def upsert_starting_grid(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            StartingGrid,
+            rows,
+            [StartingGrid.session_key, StartingGrid.driver_number],
+            ["position", "lap_duration", "fetched_at"],
+        )
+
+    async def upsert_championship_driver_standings(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            ChampionshipDriverStanding,
+            rows,
+            [ChampionshipDriverStanding.session_key, ChampionshipDriverStanding.driver_number],
+            ["points_current", "points_start", "position_current", "position_start", "fetched_at"],
+        )
+
+    async def upsert_championship_team_standings(self, rows: list[dict[str, Any]]) -> None:
+        await self._bulk_upsert(
+            ChampionshipTeamStanding,
+            rows,
+            [ChampionshipTeamStanding.session_key, ChampionshipTeamStanding.team_name],
+            ["points_current", "points_start", "position_current", "position_start", "fetched_at"],
         )
 
     async def upsert_race_control_events(self, rows: list[dict[str, Any]]) -> None:
@@ -397,7 +490,11 @@ class Database:
 
     async def disable_jobs_not_in(self, session_key: int, desired_endpoints: Sequence[str]) -> None:
         async with self.session() as session:
-            query = update(SyncJob).where(SyncJob.session_key == session_key, not_(SyncJob.job_name.like("bootstrap:%")))
+            query = update(SyncJob).where(
+                SyncJob.session_key == session_key,
+                not_(SyncJob.job_name.like("bootstrap:%")),
+                not_(SyncJob.job_name.like("manual:%")),
+            )
             if desired_endpoints:
                 query = query.where(not_(SyncJob.endpoint.in_(list(desired_endpoints))))
             query = query.values(enabled=False, updated_at=datetime.now(UTC))
@@ -418,7 +515,14 @@ class Database:
                     SyncJob.next_run_at <= datetime.now(UTC),
                     SyncJob.status.in_([SyncJobStatus.pending, SyncJobStatus.succeeded, SyncJobStatus.failed]),
                 )
-                .order_by(SyncJob.next_run_at.asc())
+                .order_by(
+                    case(
+                        (SyncJob.job_name.like("manual:%"), 0),
+                        (SyncJob.job_name.like("bootstrap:%"), 1),
+                        else_=2,
+                    ),
+                    SyncJob.next_run_at.asc(),
+                )
                 .limit(limit)
             )
             return list(result)
@@ -556,7 +660,24 @@ class Database:
     ) -> None:
         if not rows:
             return
-        stmt = insert(model).values(rows)
+
+        # asyncpg/PostgreSQL raises CardinalityViolationError when the same
+        # conflict key appears multiple times in one INSERT ... ON CONFLICT.
+        conflict_fields: list[str] = []
+        for element in index_elements:
+            field_name = getattr(element, "key", None) or getattr(element, "name", None)
+            if field_name is None:
+                raise ValueError(f"Could not resolve conflict field from index element: {element}")
+            conflict_fields.append(str(field_name))
+
+        deduped_rows: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for row in rows:
+            conflict_key = tuple(row.get(field) for field in conflict_fields)
+            deduped_rows[conflict_key] = row
+
+        rows_to_insert = list(deduped_rows.values())
+
+        stmt = insert(model).values(rows_to_insert)
         stmt = stmt.on_conflict_do_update(
             index_elements=index_elements,
             set_={field: getattr(stmt.excluded, field) for field in update_fields},

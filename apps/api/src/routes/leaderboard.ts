@@ -6,7 +6,7 @@ import { z } from "zod";
 import { buildCacheKey, getCachedJson, setCachedJson } from "../cache.js";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
-import { currentLeaderboard } from "../db/schema.js";
+import { currentLeaderboard, sessions } from "../db/schema.js";
 import type { ApiMeta } from "../types.js";
 
 const querySchema = z.object({
@@ -14,8 +14,20 @@ const querySchema = z.object({
 });
 
 export const leaderboardRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/v1/leaderboard", async (request) => {
+  app.get("/v1/leaderboard", async (request, reply) => {
     const query = querySchema.parse(request.query);
+
+    const sessionExists = await db
+      .select({ sessionKey: sessions.sessionKey })
+      .from(sessions)
+      .where(eq(sessions.sessionKey, query.sessionKey))
+      .limit(1);
+
+    if (sessionExists.length === 0) {
+      reply.code(404).send({ error: "Session not found", sessionKey: query.sessionKey });
+      return;
+    }
+
     const cacheKey = buildCacheKey("leaderboard", query);
     const cached = await getCachedJson<{ sessionKey: number; items: unknown[]; meta: ApiMeta }>(cacheKey);
     if (cached) {

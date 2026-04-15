@@ -9,7 +9,22 @@ from .config import settings
 logger = logging.getLogger("f1-dashboard-worker.cache")
 
 SESSIONS_RELATED_ENDPOINTS = {"meetings", "sessions", "drivers"}
-LEADERBOARD_RELATED_ENDPOINTS = {"drivers", "position", "intervals", "pit", "stints", "laps", "session_result"}
+LEADERBOARD_RELATED_ENDPOINTS = {
+    "drivers",
+    "position",
+    "intervals",
+    "pit",
+    "stints",
+    "laps",
+    "session_result",
+    "car_data",
+    "location",
+    "team_radio",
+    "overtakes",
+    "starting_grid",
+    "championship_drivers",
+    "championship_teams",
+}
 
 
 class CacheInvalidator:
